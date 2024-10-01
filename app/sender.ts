@@ -21,6 +21,20 @@ const f = (url: string, method: "HEAD" | "GET") =>
 		headers: { "User-Agent": CUSTOM_USER_AGENT },
 	});
 
+namespace WebmentionEndpoint {
+	export interface Discovered {
+		status: "discovered";
+		endpoint: string;
+	}
+
+	export interface Error {
+		status: "error";
+		code?: number;
+		message?: string;
+	}
+}
+type WebmentionEndpoint = WebmentionEndpoint.Discovered | WebmentionEndpoint.Error;
+
 const relRegex = /rel="([^"]+)"/;
 
 /**
@@ -28,9 +42,9 @@ const relRegex = /rel="([^"]+)"/;
  * @abstract "the first HTTP Link header takes precedence"
  * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#sender-discovers-receiver-webmention-endpoint-p-1
  */
-function tryParseWebmentionLinkHeader(response: Response) {
+function tryParseWebmentionLinkHeader(response: Response): WebmentionEndpoint {
 	const header = response.headers.get("link");
-	if (!header) return;
+	if (!header) return { status: "error", code: response.status, message: "No Link header found" };
 	const links = header.split(",");
 
 	for (const link of links) {
@@ -40,19 +54,22 @@ function tryParseWebmentionLinkHeader(response: Response) {
 		const url = urlpart.slice(1, -1);
 		const rel = relpart.match(relRegex)?.[1];
 		if (rel !== "webmention") continue;
-		return url;
+		return { status: "discovered", endpoint: url };
 	}
+
+	return { status: "error", code: response.status, message: "No webmention Link header found" };
 }
 
 /**
  * @abstract "If the content type of the document is HTML, then the sender MUST look for an HTML `<link>` and `<a>` element with a rel value of webmention."
  * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#sender-discovers-receiver-webmention-endpoint-p-1
  */
-async function tryParseHTML(response: Response) {
-	if (!response.body) return;
+async function tryParseHTML(response: Response): Promise<WebmentionEndpoint> {
+	if (!response.body) return { status: "error", code: response.status, message: "No body found" };
 
 	const contentType = response.headers.get("content-type");
-	if (!contentType?.includes("text/html")) return;
+	if (!contentType?.includes("text/html"))
+		return { status: "error", code: response.status, message: "Not an HTML document" };
 
 	let webmentionEndpoint: string | undefined;
 
@@ -70,7 +87,14 @@ async function tryParseHTML(response: Response) {
 	const stream = Readable.fromWeb(response.body);
 	stream.pipe(parser);
 
-	return webmentionEndpoint;
+	await new Promise(resolve => parser.on("end", resolve));
+
+	if (webmentionEndpoint) return { status: "discovered", endpoint: webmentionEndpoint };
+	return {
+		status: "error",
+		code: response.status,
+		message: "No webmention Link header, <link> or <a> element found",
+	};
 }
 
 /**
@@ -78,9 +102,9 @@ async function tryParseHTML(response: Response) {
  * @abstract "Senders MAY initially make an HTTP HEAD request [RFC7231] to check for the Link header before making a GET request."
  * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#sender-discovers-receiver-webmention-endpoint-p-4
  */
-async function tryHeadRequest(url: string) {
+async function tryHeadRequest(url: string): Promise<WebmentionEndpoint> {
 	const response = await fetch(url, { method: "HEAD", redirect: "follow" });
-	if (!response.ok) return;
+	if (!response.ok) return { status: "error", code: response.status, message: response.statusText };
 	return tryParseWebmentionLinkHeader(response);
 }
 
@@ -90,9 +114,9 @@ async function tryHeadRequest(url: string) {
  * @abstract "If more than one of these is present, the first HTTP Link header takes precedence, followed by the first `<link>` or `<a>` element in document order. Senders MUST support all three options and fall back in this order."
  * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#sender-discovers-receiver-webmention-endpoint-p-1
  */
-async function tryGetRequest(url: string) {
+async function tryGetRequest(url: string): Promise<WebmentionEndpoint> {
 	const response = await fetch(url, { method: "GET", redirect: "follow" });
-	if (!response.ok) return;
+	if (!response.ok) return { status: "error", code: response.status, message: response.statusText };
 
 	const webmentionEndpoint = tryParseWebmentionLinkHeader(response);
 	if (webmentionEndpoint) return webmentionEndpoint;
@@ -100,11 +124,16 @@ async function tryGetRequest(url: string) {
 	return tryParseHTML(response);
 }
 
-export class CrossOriginPolicyViolation extends Error {
-	constructor(policy: CrossDomainPolicy, violation: "protocol" | "host" | "port", expected: string, found: string) {
-		super(`${policy} policy violation (${violation}): expected ${expected}, found ${found}`);
-		this.name = "CrossOriginPolicyViolation";
-	}
+function crossOriginPolicyViolation(
+	policy: CrossDomainPolicy,
+	violation: "protocol" | "host" | "port",
+	expected: string,
+	found: string,
+): WebmentionEndpoint.Error {
+	return {
+		status: "error",
+		message: `${policy} policy violation (${violation}): expected ${expected}, found ${found}`,
+	};
 }
 
 // Normalise the hostnames by converting to lowercase and removing trailing dots
@@ -126,42 +155,46 @@ function isSameSite(check: string, relative: string): boolean {
 	return slicedCheck.every((part, index) => part === relativeParts[index]);
 }
 
-async function discoverWebmentionEndpoint(url: string, crossSitePolicy: CrossDomainPolicy) {
+async function discoverWebmentionEndpoint(
+	url: string,
+	crossSitePolicy: CrossDomainPolicy,
+): Promise<WebmentionEndpoint> {
 	const webmentionEndpoint = (await tryHeadRequest(url)) ?? (await tryGetRequest(url));
-	if (!webmentionEndpoint) return;
+	if (webmentionEndpoint.status === "error") return webmentionEndpoint;
 
 	/**
 	 * @abstract The endpoint MAY be a relative URL, in which case the sender MUST resolve it relative to the target URL according to [URL].
 	 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#sender-discovers-receiver-webmention-endpoint-p-2
 	 */
-	const resolved = new URL(webmentionEndpoint, url).href;
+	const resolved = new URL(webmentionEndpoint.endpoint, url).href;
 
-	if (crossSitePolicy === "cross-origin") return resolved;
+	if (crossSitePolicy === "cross-origin") return { status: "discovered", endpoint: resolved };
 
 	const original = new URL(url);
 	const found = new URL(resolved);
 
 	if (original.protocol !== found.protocol)
-		throw new CrossOriginPolicyViolation(crossSitePolicy, "protocol", original.protocol, found.protocol);
+		return crossOriginPolicyViolation(crossSitePolicy, "protocol", original.protocol, found.protocol);
 
 	if (crossSitePolicy === "same-origin") {
 		if (original.host !== found.host)
-			throw new CrossOriginPolicyViolation("same-origin", "host", original.host, found.host);
+			return crossOriginPolicyViolation(crossSitePolicy, "host", original.host, found.host);
 
 		if (original.port !== found.port)
-			throw new CrossOriginPolicyViolation("same-origin", "port", original.port, found.port);
+			// throw new CrossOriginPolicyViolation("same-origin", "port", original.port, found.port);
+			return crossOriginPolicyViolation(crossSitePolicy, "port", original.port, found.port);
 
-		return resolved;
+		return { status: "discovered", endpoint: resolved };
 	}
 
 	if (crossSitePolicy === "same-site") {
 		if (!isSameSite(original.host, found.host))
-			throw new CrossOriginPolicyViolation("same-site", "host", original.host, found.host);
+			return crossOriginPolicyViolation(crossSitePolicy, "host", original.host, found.host);
 
-		return resolved;
+		return { status: "discovered", endpoint: resolved };
 	}
 
-	return resolved;
+	return { status: "discovered", endpoint: resolved };
 }
 
 export namespace WebmentionResponse {
@@ -228,6 +261,7 @@ export async function sendWebmention(
 ): Promise<WebmentionResponse> {
 	const crossOriginPolicy = options?.crossOriginPolicy ?? CROSS_DOMAIN_POLICY;
 	const webmentionEndpoint = await discoverWebmentionEndpoint(target, crossOriginPolicy);
-	if (!webmentionEndpoint) return { status: "error", message: "No webmention endpoint found" };
-	return notifyReceiver(webmentionEndpoint, source, target);
+	if (webmentionEndpoint.status === "error")
+		return { status: "error", code: webmentionEndpoint.code, message: webmentionEndpoint.message };
+	return notifyReceiver(webmentionEndpoint.endpoint, source, target);
 }
