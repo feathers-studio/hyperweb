@@ -3,9 +3,9 @@ import { version } from "../package.json";
 import { Readable } from "node:stream";
 import { WritableStream } from "htmlparser2/lib/WritableStream";
 
-type CrossSitePolicy = "same-origin" | "same-site" | "cross-origin";
+type CrossDomainPolicy = "same-origin" | "same-site" | "cross-origin";
 
-const CROSS_ORIGIN_POLICY: CrossSitePolicy = "cross-origin";
+const CROSS_DOMAIN_POLICY: CrossDomainPolicy = "cross-origin";
 
 /**
  * @abstract "Senders MAY customize the HTTP User Agent [RFC7231] used when fetching the target URL..."
@@ -101,7 +101,7 @@ async function tryGetRequest(url: string) {
 }
 
 export class CrossOriginPolicyViolation extends Error {
-	constructor(policy: CrossSitePolicy, violation: "protocol" | "host", expected: string, found: string) {
+	constructor(policy: CrossDomainPolicy, violation: "protocol" | "host" | "port", expected: string, found: string) {
 		super(`${policy} policy violation (${violation}): expected ${expected}, found ${found}`);
 		this.name = "CrossOriginPolicyViolation";
 	}
@@ -126,7 +126,7 @@ function isSameSite(check: string, relative: string): boolean {
 	return slicedCheck.every((part, index) => part === relativeParts[index]);
 }
 
-async function discoverWebmentionEndpoint(url: string, crossSitePolicy: CrossSitePolicy) {
+async function discoverWebmentionEndpoint(url: string, crossSitePolicy: CrossDomainPolicy) {
 	const webmentionEndpoint = (await tryHeadRequest(url)) ?? (await tryGetRequest(url));
 	if (!webmentionEndpoint) return;
 
@@ -147,6 +147,9 @@ async function discoverWebmentionEndpoint(url: string, crossSitePolicy: CrossSit
 	if (crossSitePolicy === "same-origin") {
 		if (original.host !== found.host)
 			throw new CrossOriginPolicyViolation("same-origin", "host", original.host, found.host);
+
+		if (original.port !== found.port)
+			throw new CrossOriginPolicyViolation("same-origin", "port", original.port, found.port);
 
 		return resolved;
 	}
@@ -199,7 +202,7 @@ async function notifyReceiver(webmentionEndpoint: string, source: string, target
 		if (header) return { status: "accepted", location: header };
 	} else if (response.ok) {
 		/**
-		 * @abstract "Any 2xx response code MUST be considered a success."
+		 * @abstract "cross-origin 2xx response code MUST be considered a success."
 		 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#sender-notifies-receiver-p-4
 		 */
 		return { status: "accepted" };
@@ -213,14 +216,17 @@ async function notifyReceiver(webmentionEndpoint: string, source: string, target
 	}
 }
 
+/**
+ * @see https://www.w3.org/TR/2017/REC-webmention-20170112
+ */
 export async function sendWebmention(
 	source: string,
 	target: string,
 	options?: {
-		crossOriginPolicy?: CrossSitePolicy;
+		crossOriginPolicy?: CrossDomainPolicy;
 	},
 ): Promise<WebmentionResponse> {
-	const crossOriginPolicy = options?.crossOriginPolicy ?? CROSS_ORIGIN_POLICY;
+	const crossOriginPolicy = options?.crossOriginPolicy ?? CROSS_DOMAIN_POLICY;
 	const webmentionEndpoint = await discoverWebmentionEndpoint(target, crossOriginPolicy);
 	if (!webmentionEndpoint) return { status: "error", message: "No webmention endpoint found" };
 	return notifyReceiver(webmentionEndpoint, source, target);
