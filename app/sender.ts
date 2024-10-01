@@ -107,6 +107,25 @@ export class CrossOriginPolicyViolation extends Error {
 	}
 }
 
+// Normalise the hostnames by converting to lowercase and removing trailing dots
+const normaliseHostname = (hostname: string) => hostname.toLowerCase().replace(/\.$/, "");
+
+function isSameSite(check: string, relative: string): boolean {
+	check = normaliseHostname(check);
+	relative = normaliseHostname(relative);
+
+	if (check === relative) return true;
+
+	const checkParts = check.split(".");
+	const relativeParts = relative.split(".");
+
+	if (checkParts.length <= relativeParts.length) return false;
+
+	// Check if the last parts of A match all of B
+	const slicedCheck = checkParts.slice(-relativeParts.length);
+	return slicedCheck.every((part, index) => part === relativeParts[index]);
+}
+
 async function discoverWebmentionEndpoint(url: string, crossSitePolicy: CrossSitePolicy) {
 	const webmentionEndpoint = (await tryHeadRequest(url)) ?? (await tryGetRequest(url));
 	if (!webmentionEndpoint) return;
@@ -122,11 +141,19 @@ async function discoverWebmentionEndpoint(url: string, crossSitePolicy: CrossSit
 	const original = new URL(url);
 	const found = new URL(resolved);
 
+	if (original.protocol !== found.protocol)
+		throw new CrossOriginPolicyViolation(crossSitePolicy, "protocol", original.protocol, found.protocol);
+
 	if (crossSitePolicy === "same-origin") {
-		if (original.protocol !== found.protocol)
-			throw new CrossOriginPolicyViolation("same-origin", "protocol", original.protocol, found.protocol);
 		if (original.host !== found.host)
 			throw new CrossOriginPolicyViolation("same-origin", "host", original.host, found.host);
+
+		return resolved;
+	}
+
+	if (crossSitePolicy === "same-site") {
+		if (!isSameSite(original.host, found.host))
+			throw new CrossOriginPolicyViolation("same-site", "host", original.host, found.host);
 
 		return resolved;
 	}
