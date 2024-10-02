@@ -6,7 +6,6 @@ import { Readable } from "node:stream";
 import { WritableStream } from "htmlparser2/lib/WritableStream";
 
 type CrossOriginPolicy = "same-origin" | "same-site" | "cross-origin";
-
 const CROSS_ORIGIN_POLICY: CrossOriginPolicy = "cross-origin";
 
 /**
@@ -17,17 +16,15 @@ const CROSS_ORIGIN_POLICY: CrossOriginPolicy = "cross-origin";
 const USER_AGENT = "HyperWeb WebmentionSender/" + version;
 
 namespace WebmentionEndpoint {
-	export interface Discovered {
-		status: "discovered";
-		endpoint: string;
+	export class Discovered {
+		constructor(public endpoint: string) {}
 	}
 
-	export interface Error {
-		status: "error";
-		code?: number;
-		message?: string;
+	export class Error {
+		constructor(public message: string, public code?: number) {}
 	}
 }
+
 type WebmentionEndpoint = WebmentionEndpoint.Discovered | WebmentionEndpoint.Error;
 
 const relRegex = /rel="([^"]+)"/;
@@ -39,7 +36,7 @@ const relRegex = /rel="([^"]+)"/;
  */
 function tryParseWebmentionLinkHeader(response: Response): WebmentionEndpoint {
 	const header = response.headers.get("link");
-	if (!header) return { status: "error", code: response.status, message: "No Link header found" };
+	if (!header) return new WebmentionEndpoint.Error("No Link header found", response.status);
 	const links = header.split(",");
 
 	for (const link of links) {
@@ -49,10 +46,10 @@ function tryParseWebmentionLinkHeader(response: Response): WebmentionEndpoint {
 		const url = urlpart.slice(1, -1);
 		const rel = relpart.match(relRegex)?.[1];
 		if (rel !== "webmention") continue;
-		return { status: "discovered", endpoint: url };
+		return new WebmentionEndpoint.Discovered(url);
 	}
 
-	return { status: "error", code: response.status, message: "No webmention Link header found" };
+	return new WebmentionEndpoint.Error("No webmention Link header found", response.status);
 }
 
 /**
@@ -60,11 +57,11 @@ function tryParseWebmentionLinkHeader(response: Response): WebmentionEndpoint {
  * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#sender-discovers-receiver-webmention-endpoint-p-1
  */
 async function tryParseHTML(response: Response): Promise<WebmentionEndpoint> {
-	if (!response.body) return { status: "error", code: response.status, message: "No body found" };
+	if (!response.body) return new WebmentionEndpoint.Error("No body found", response.status);
 
 	const contentType = response.headers.get("content-type");
 	if (!contentType?.includes("text/html"))
-		return { status: "error", code: response.status, message: "Not an HTML document" };
+		return new WebmentionEndpoint.Error("Not an HTML document", response.status);
 
 	let webmentionEndpoint: string | undefined;
 
@@ -84,12 +81,8 @@ async function tryParseHTML(response: Response): Promise<WebmentionEndpoint> {
 
 	await new Promise(resolve => parser.on("finish", resolve));
 
-	if (webmentionEndpoint) return { status: "discovered", endpoint: webmentionEndpoint };
-	return {
-		status: "error",
-		code: response.status,
-		message: "No webmention Link header, <link> or <a> element found",
-	};
+	if (webmentionEndpoint) return new WebmentionEndpoint.Discovered(webmentionEndpoint);
+	return new WebmentionEndpoint.Error("No webmention Link header, <link> or <a> element found", response.status);
 }
 
 const f = (url: string, method: "HEAD" | "GET") =>
@@ -106,7 +99,7 @@ const f = (url: string, method: "HEAD" | "GET") =>
  */
 async function tryHeadRequest(url: string): Promise<WebmentionEndpoint> {
 	const response = await f(url, "HEAD");
-	if (!response.ok) return { status: "error", code: response.status, message: response.statusText };
+	if (!response.ok) return new WebmentionEndpoint.Error(response.statusText, response.status);
 	return tryParseWebmentionLinkHeader(response);
 }
 
@@ -118,7 +111,7 @@ async function tryHeadRequest(url: string): Promise<WebmentionEndpoint> {
  */
 async function tryGetRequest(url: string): Promise<WebmentionEndpoint> {
 	const response = await f(url, "GET");
-	if (!response.ok) return { status: "error", code: response.status, message: response.statusText };
+	if (!response.ok) return new WebmentionEndpoint.Error(response.statusText, response.status);
 
 	const webmentionEndpoint = tryParseWebmentionLinkHeader(response);
 	if (webmentionEndpoint) return webmentionEndpoint;
@@ -132,10 +125,10 @@ function crossOriginPolicyViolation(
 	expected: string,
 	found: string,
 ): WebmentionEndpoint.Error {
-	return {
-		status: "error",
-		message: `${policy} policy violation (${violation}): expected ${expected}, found ${found}`,
-	};
+	return new WebmentionEndpoint.Error(
+		`${policy} policy violation (${violation}): expected ${expected}, found ${found}`,
+		500,
+	);
 }
 
 // Normalise the hostnames by converting to lowercase and removing trailing dots
@@ -165,7 +158,7 @@ async function discoverWebmentionEndpoint(
 	},
 ): Promise<WebmentionEndpoint> {
 	const webmentionEndpoint = (await tryHeadRequest(url)) ?? (await tryGetRequest(url));
-	if (webmentionEndpoint.status === "error") return webmentionEndpoint;
+	if (webmentionEndpoint instanceof WebmentionEndpoint.Error) return webmentionEndpoint;
 
 	/**
 	 * @abstract The endpoint MAY be a relative URL, in which case the sender MUST resolve it relative to the target URL according to [URL].
@@ -175,7 +168,7 @@ async function discoverWebmentionEndpoint(
 
 	const { crossOriginPolicy, allowedOrigins } = options;
 
-	if (crossOriginPolicy === "cross-origin") return { status: "discovered", endpoint: resolved };
+	if (crossOriginPolicy === "cross-origin") return new WebmentionEndpoint.Discovered(resolved);
 
 	const original = new URL(url);
 	const found = new URL(resolved);
@@ -185,7 +178,7 @@ async function discoverWebmentionEndpoint(
 			origin => origin.protocol === found.protocol && origin.host === found.host && origin.port === found.port,
 		)
 	)
-		return { status: "discovered", endpoint: resolved };
+		return new WebmentionEndpoint.Discovered(resolved);
 
 	if (original.protocol !== found.protocol)
 		return crossOriginPolicyViolation(crossOriginPolicy, "protocol", original.protocol, found.protocol);
@@ -198,33 +191,27 @@ async function discoverWebmentionEndpoint(
 			// throw new CrossOriginPolicyViolation("same-origin", "port", original.port, found.port);
 			return crossOriginPolicyViolation(crossOriginPolicy, "port", original.port, found.port);
 
-		return { status: "discovered", endpoint: resolved };
+		return new WebmentionEndpoint.Discovered(resolved);
 	}
 
 	if (crossOriginPolicy === "same-site") {
 		if (!isSameSite(original.host, found.host))
 			return crossOriginPolicyViolation(crossOriginPolicy, "host", original.host, found.host);
 
-		return { status: "discovered", endpoint: resolved };
+		return new WebmentionEndpoint.Discovered(resolved);
 	}
 
-	return { status: "discovered", endpoint: resolved };
+	return new WebmentionEndpoint.Discovered(resolved);
 }
 
 export namespace WebmentionResponse {
-	export interface Accepted {
-		status: "accepted";
-		location?: string;
+	export class Accepted {
+		constructor(public location?: string) {}
 	}
 
-	export interface Error {
-		status: "error";
-		code?: number;
-		message?: string;
+	export class Error {
+		constructor(public message: string, public code?: number) {}
 	}
-
-	export const accepted = (location?: string): Accepted => ({ status: "accepted", location });
-	export const errored = (message: string, code?: number): Error => ({ status: "error", code, message });
 }
 
 export type WebmentionResponse = WebmentionResponse.Accepted | WebmentionResponse.Error;
@@ -263,20 +250,20 @@ async function notifyReceiver(
 		 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#sender-notifies-receiver-p-3
 		 */
 		const header = response.headers.get("location");
-		if (header) return WebmentionResponse.accepted(header);
+		if (header) return new WebmentionResponse.Accepted(header);
 	} else if (response.ok) {
 		/**
 		 * @abstract "cross-origin 2xx response code MUST be considered a success."
 		 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#sender-notifies-receiver-p-4
 		 */
-		return WebmentionResponse.accepted();
+		return new WebmentionResponse.Accepted();
 	}
 
 	try {
 		const message = await response.text();
-		return WebmentionResponse.errored(message, response.status);
+		return new WebmentionResponse.Error(message, response.status);
 	} catch (error) {
-		return WebmentionResponse.errored(response.statusText, response.status);
+		return new WebmentionResponse.Error(response.statusText, response.status);
 	}
 }
 
@@ -318,9 +305,9 @@ export function Sender(options?: {
 	return async function sendWebmention(source: string, target: string): Promise<WebmentionResponse> {
 		const webmentionEndpoint = await discoverWebmentionEndpoint(target, { crossOriginPolicy, allowedOrigins });
 
-		if (webmentionEndpoint.status === "error") {
+		if (webmentionEndpoint instanceof WebmentionEndpoint.Error) {
 			const message = webmentionEndpoint.message ?? "Unknown error";
-			return WebmentionResponse.errored(message, webmentionEndpoint.code);
+			return new WebmentionResponse.Error(message, webmentionEndpoint.code);
 		}
 
 		return notifyReceiver(webmentionEndpoint.endpoint, source, target, { userAgent });
