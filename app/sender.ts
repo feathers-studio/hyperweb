@@ -82,7 +82,7 @@ async function tryParseHTML(response: Response): Promise<WebmentionEndpoint> {
 	const stream = Readable.fromWeb(response.body);
 	stream.pipe(parser);
 
-	await new Promise(resolve => parser.on("end", resolve));
+	await new Promise(resolve => parser.on("finish", resolve));
 
 	if (webmentionEndpoint) return { status: "discovered", endpoint: webmentionEndpoint };
 	return {
@@ -280,51 +280,49 @@ async function notifyReceiver(
 	}
 }
 
-/**
- * @see https://www.w3.org/TR/2017/REC-webmention-20170112
- */
-export async function sendWebmention(
-	source: string,
-	target: string,
-	options?: {
-		/**
-		 * An extension to WebMention protocol, allowing the sender to specify the cross-origin policy.
-		 *
-		 * * `"same-origin"`: do not send the WebMention if the resolved WebMention URL is not on the same origin (same protocol, domain, and port) as the target URL.
-		 * * `"same-site"`: do not send the WebMention if the resolved WebMention URL is not on the same site (same protocol, but different subdomain or port are allowed) as the target URL.
-		 * * `"cross-origin"`: send the WebMention regardless of the origin of the resolved WebMention URL.
-		 *
-		 * @default "cross-origin"
-		 */
-		crossOriginPolicy?: CrossOriginPolicy;
-		/**
-		 * An extension to WebMention protocol, allowing the sender to specify a list of allowed origins.
-		 * If the `crossOriginPolicy` restricts the origin, the resolved WebMention URL must be in the list of allowed origins.
-		 * Otherwise the WebMention will not be sent.
-		 *
-		 * @default ["https://webmention.io"]
-		 */
-		allowedOrigins?: string[];
-		/**
-		 * Specify a custom User Agent for the HTTP requests.
-		 *
-		 * @default "HyperWeb WebmentionSender/${version}"
-		 */
-		userAgent?: string;
-	},
-): Promise<WebmentionResponse> {
+export function Sender(options?: {
+	/**
+	 * An extension to WebMention protocol, allowing the sender to specify the cross-origin policy.
+	 *
+	 * * `"same-origin"`: do not send the WebMention if the resolved WebMention URL is not on the same origin (same protocol, domain, and port) as the target URL.
+	 * * `"same-site"`: do not send the WebMention if the resolved WebMention URL is not on the same site (same protocol, but different subdomain or port are allowed) as the target URL.
+	 * * `"cross-origin"`: send the WebMention regardless of the origin of the resolved WebMention URL.
+	 *
+	 * @default "cross-origin"
+	 */
+	crossOriginPolicy?: CrossOriginPolicy;
+	/**
+	 * An extension to WebMention protocol, allowing the sender to specify a list of allowed origins.
+	 * If the `crossOriginPolicy` restricts the origin, the resolved WebMention URL must be in the list of allowed origins.
+	 * Otherwise the WebMention will not be sent.
+	 *
+	 * @default ["https://webmention.io"]
+	 */
+	allowedOrigins?: string[];
+	/**
+	 * Specify a custom User Agent for the HTTP requests.
+	 *
+	 * @default "HyperWeb WebmentionSender/${version}"
+	 */
+	userAgent?: string;
+}) {
 	const userAgent = options?.userAgent ?? USER_AGENT;
 	const crossOriginPolicy = options?.crossOriginPolicy ?? CROSS_ORIGIN_POLICY;
 	const allowedOrigins = (options?.allowedOrigins ?? ["https://webmention.io"]).map(
 		origin => new URL(/(https?:\/\/[^/]+)/.test(origin) ? origin : `https://${origin}`),
 	);
 
-	const webmentionEndpoint = await discoverWebmentionEndpoint(target, { crossOriginPolicy, allowedOrigins });
+	/**
+	 * @see https://www.w3.org/TR/2017/REC-webmention-20170112
+	 */
+	return async function sendWebmention(source: string, target: string): Promise<WebmentionResponse> {
+		const webmentionEndpoint = await discoverWebmentionEndpoint(target, { crossOriginPolicy, allowedOrigins });
 
-	if (webmentionEndpoint.status === "error") {
-		const message = webmentionEndpoint.message ?? "Unknown error";
-		return WebmentionResponse.errored(message, webmentionEndpoint.code);
-	}
+		if (webmentionEndpoint.status === "error") {
+			const message = webmentionEndpoint.message ?? "Unknown error";
+			return WebmentionResponse.errored(message, webmentionEndpoint.code);
+		}
 
-	return notifyReceiver(webmentionEndpoint.endpoint, source, target, { userAgent });
+		return notifyReceiver(webmentionEndpoint.endpoint, source, target, { userAgent });
+	};
 }
