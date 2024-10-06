@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 
 import { WritableStream } from "htmlparser2/lib/WritableStream";
 import { Err, matchDomain, trya } from "./util";
+import type { Storage } from "./store";
 
 type FormDataEntryValue = ReturnType<FormData["get"]>;
 
@@ -75,51 +76,54 @@ async function validateJSON(response: Response, target: URL): Promise<boolean> {
 	return false;
 }
 
-export function Receiver(options?: {
-	/**
-	 * @abstract "Senders MAY customize the HTTP User Agent [RFC7231] used when fetching the target URL..."
-	 * @abstract "In this case, it is recommended to include the string "Webmention" in the User Agent."
-	 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#sender-discovers-receiver-webmention-endpoint-p-7
-	 *
-	 * @default "HyperWeb WebmentionReceiver/${version}"
-	 */
-	userAgent?: string;
+export function Receiver(
+	storage: Storage,
+	options?: {
+		/**
+		 * @abstract "Senders MAY customize the HTTP User Agent [RFC7231] used when fetching the target URL..."
+		 * @abstract "In this case, it is recommended to include the string "Webmention" in the User Agent."
+		 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#sender-discovers-receiver-webmention-endpoint-p-7
+		 *
+		 * @default "HyperWeb WebmentionReceiver/${version}"
+		 */
+		userAgent?: string;
 
-	/**
-	 * An extension to the Webmention specification that allows receivers to require a custom attribute to look for in `<a>`, `<img>`, `<audio>`, and `<video>` tags in the source document.
-	 * @default "webmention"
-	 */
-	requireAttribute?: string;
+		/**
+		 * An extension to the Webmention specification that allows receivers to require a custom attribute to look for in `<a>`, `<img>`, `<audio>`, and `<video>` tags in the source document.
+		 * @default "webmention"
+		 */
+		requireAttribute?: string;
 
-	/**
-	 * @abstract "The receiver MUST check that source and target are valid URLs [URL] and are of schemes that are supported by the receiver. (Most commonly this means checking that the source and target schemes are http or https)."
-	 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#request-verification-p-1
-	 * @default ["http:", "https:"]
-	 */
-	acceptedProtocols?: string[];
+		/**
+		 * @abstract "The receiver MUST check that source and target are valid URLs [URL] and are of schemes that are supported by the receiver. (Most commonly this means checking that the source and target schemes are http or https)."
+		 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#request-verification-p-1
+		 * @default ["http:", "https:"]
+		 */
+		acceptedProtocols?: string[];
 
-	/**
-	 * If set, the receiver will only accept Webmentions for the specified domains.
-	 * @abstract "some receivers may accept Webmentions for multiple domains, others may accept Webmentions for only the same domain the endpoint is on."
-	 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#request-verification-p-3
-	 */
-	acceptedTargetDomains?: string[];
+		/**
+		 * If set, the receiver will only accept Webmentions for the specified domains.
+		 * @abstract "some receivers may accept Webmentions for multiple domains, others may accept Webmentions for only the same domain the endpoint is on."
+		 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#request-verification-p-3
+		 */
+		acceptedTargetDomains?: string[];
 
-	/**
-	 * If set, the receiver will only accept Webmentions for the specified content types.
-	 * @abstract "The receiver SHOULD use per-media-type rules to determine whether the source document mentions the target URL."
-	 * @abstract "content types may be handled at the implementer's discretion"
-	 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#webmention-verification-p-3
-	 * @default ["text/html", "application/json", "text/plain"]
-	 */
-	acceptedContentTypes?: string[];
+		/**
+		 * If set, the receiver will only accept Webmentions for the specified content types.
+		 * @abstract "The receiver SHOULD use per-media-type rules to determine whether the source document mentions the target URL."
+		 * @abstract "content types may be handled at the implementer's discretion"
+		 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#webmention-verification-p-3
+		 * @default ["text/html", "application/json", "text/plain"]
+		 */
+		acceptedContentTypes?: string[];
 
-	/**
-	 * A function that checks if the body of a custom content type is valid.
-	 * By default, the receiver will only accept Webmentions for "text/html", "application/json", and "text/plain" bodies.
-	 */
-	checkCustomContentTypeBody?: (request: Request, contentType: string | null) => Promise<boolean>;
-}) {
+		/**
+		 * A function that checks if the body of a custom content type is valid.
+		 * By default, the receiver will only accept Webmentions for "text/html", "application/json", and "text/plain" bodies.
+		 */
+		checkCustomContentTypeBody?: (request: Request, contentType: string | null) => Promise<boolean>;
+	},
+) {
 	const userAgent = options?.userAgent ?? `HyperWeb WebmentionReceiver/${version}`;
 	const requireAttribute = options?.requireAttribute ?? "webmention";
 	const acceptedProtocols = options?.acceptedProtocols ?? ["http:", "https:"];

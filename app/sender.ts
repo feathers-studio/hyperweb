@@ -4,6 +4,7 @@ import { URL } from "node:url";
 import { Readable } from "node:stream";
 
 import { WritableStream } from "htmlparser2/lib/WritableStream";
+import type { Storage } from "./store";
 
 type CrossOriginPolicy = "same-origin" | "same-site" | "cross-origin";
 const CROSS_ORIGIN_POLICY: CrossOriginPolicy = "cross-origin";
@@ -267,32 +268,35 @@ async function notifyReceiver(
 	}
 }
 
-export function Sender(options?: {
-	/**
-	 * An extension to WebMention protocol, allowing the sender to specify the cross-origin policy.
-	 *
-	 * * `"same-origin"`: do not send the WebMention if the resolved WebMention URL is not on the same origin (same protocol, domain, and port) as the target URL.
-	 * * `"same-site"`: do not send the WebMention if the resolved WebMention URL is not on the same site (same protocol, but different subdomain or port are allowed) as the target URL.
-	 * * `"cross-origin"`: send the WebMention regardless of the origin of the resolved WebMention URL.
-	 *
-	 * @default "cross-origin"
-	 */
-	crossOriginPolicy?: CrossOriginPolicy;
-	/**
-	 * An extension to WebMention protocol, allowing the sender to specify a list of allowed origins.
-	 * If the `crossOriginPolicy` restricts the origin, the resolved WebMention URL must be in the list of allowed origins.
-	 * Otherwise the WebMention will not be sent.
-	 *
-	 * @default ["https://webmention.io"]
-	 */
-	allowedOrigins?: string[];
-	/**
-	 * Specify a custom User Agent for the HTTP requests.
-	 *
-	 * @default "HyperWeb WebmentionSender/${version}"
-	 */
-	userAgent?: string;
-}) {
+export function Sender(
+	storage: Storage,
+	options?: {
+		/**
+		 * An extension to WebMention protocol, allowing the sender to specify the cross-origin policy.
+		 *
+		 * * `"same-origin"`: do not send the WebMention if the resolved WebMention URL is not on the same origin (same protocol, domain, and port) as the target URL.
+		 * * `"same-site"`: do not send the WebMention if the resolved WebMention URL is not on the same site (same protocol, but different subdomain or port are allowed) as the target URL.
+		 * * `"cross-origin"`: send the WebMention regardless of the origin of the resolved WebMention URL.
+		 *
+		 * @default "cross-origin"
+		 */
+		crossOriginPolicy?: CrossOriginPolicy;
+		/**
+		 * An extension to WebMention protocol, allowing the sender to specify a list of allowed origins.
+		 * If the `crossOriginPolicy` restricts the origin, the resolved WebMention URL must be in the list of allowed origins.
+		 * Otherwise the WebMention will not be sent.
+		 *
+		 * @default ["https://webmention.io"]
+		 */
+		allowedOrigins?: string[];
+		/**
+		 * Specify a custom User Agent for the HTTP requests.
+		 *
+		 * @default "HyperWeb WebmentionSender/${version}"
+		 */
+		userAgent?: string;
+	},
+) {
 	const userAgent = options?.userAgent ?? USER_AGENT;
 	const crossOriginPolicy = options?.crossOriginPolicy ?? CROSS_ORIGIN_POLICY;
 	const allowedOrigins = (options?.allowedOrigins ?? ["https://webmention.io"]).map(
