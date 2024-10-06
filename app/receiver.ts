@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { WritableStream } from "htmlparser2/lib/WritableStream";
 import { Err, matchDomain, trya } from "./util";
 import type { Storage } from "./store";
+import { parseExtension, type RawWebmentionWithPossiblePayload } from "./extensions";
 
 type FormDataEntryValue = ReturnType<FormData["get"]>;
 
@@ -137,22 +138,29 @@ export function Receiver(
 			return new Response("Content-Type must be application/x-www-form-urlencoded", { status: 400 });
 
 		const body = await trya(
-			() => request.formData(),
+			async () => new URLSearchParams(await request.text()),
 			() => new Err("Malformed payload. Could not parse request body", 400),
 		);
 
 		if (body instanceof Err) return body;
+
+		const mention = Object.fromEntries(body.entries());
 
 		/**
 		 * @abstract "The receiver MUST check that source and target are valid URLs [URL] and are of schemes that are supported by the receiver."
 		 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#request-verification-p-1
 		 */
 
-		const source = parseURL(body.get("source"), "source", acceptedProtocols);
+		const source = parseURL(mention.source, "source", acceptedProtocols);
 		if (source instanceof Err) return source;
 
-		const target = parseURL(body.get("target"), "target", acceptedProtocols);
+		const target = parseURL(mention.target, "target", acceptedProtocols);
 		if (target instanceof Err) return target;
+
+		if (mention.definition) {
+			const extension = parseExtension(mention as RawWebmentionWithPossiblePayload);
+			if (extension instanceof Err) return extension;
+		}
 
 		/**
 		 * @abstract "The receiver MUST reject the request if the source URL is the same as the target URL."

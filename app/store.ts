@@ -30,12 +30,15 @@ export const Storage = (
 	db.query(`
 		CREATE TABLE IF NOT EXISTS webmentions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+
 			source TEXT NOT NULL,
 			target TEXT NOT NULL,
 			type TEXT,
-			payload TEXT,
+			payload JSONB,
+
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
 			UNIQUE(source, target)
 		)
 	`);
