@@ -4,7 +4,7 @@ import { URL } from "node:url";
 import { Readable } from "node:stream";
 
 import { WritableStream } from "htmlparser2/lib/WritableStream";
-import { Err, matchDomain, trya } from "./util";
+import { Err, isObject, matchDomain, trya } from "./util";
 import type { Storage } from "./store";
 import { parseExtension, type RawWebmentionWithPossiblePayload } from "./extensions";
 
@@ -22,8 +22,6 @@ function parseURL(url: FormDataEntryValue, name: string, acceptedProtocols: stri
 		return new Err(`Invalid ${name} URL`, 400);
 	}
 }
-
-const isObject = (val: unknown): val is Record<string, unknown> => typeof val === "object" && val !== null;
 
 function checkObject(obj: unknown, target: string): boolean {
 	if (!isObject(obj)) return false;
@@ -157,9 +155,13 @@ export function Receiver(
 		const target = parseURL(mention.target, "target", acceptedProtocols);
 		if (target instanceof Err) return target;
 
-		if (mention.definition) {
-			const extension = parseExtension(mention as RawWebmentionWithPossiblePayload);
-			if (extension instanceof Err) return extension;
+		let parsed;
+
+		if (mention.definition || mention.payload) {
+			parsed = parseExtension(mention as RawWebmentionWithPossiblePayload);
+			if (parsed instanceof Err) return parsed;
+		} else {
+			parsed = { source: source.href, target: target.href };
 		}
 
 		/**
@@ -175,7 +177,7 @@ export function Receiver(
 			 * @see https://www.w3.org/TR/2017/REC-webmention-20170112/#request-verification-p-3
 			 */
 			const supported = options.acceptedTargetDomains.some(domain => matchDomain(domain, target.hostname));
-			if (!supported) return new Err("Receiver does not support target domain", 400);
+			if (!supported) return new Err("Receiver does not accept Webmentions for target domain", 400);
 		}
 
 		// TODO: From this point on should be asynchronously put in a queue and processed in order
@@ -198,8 +200,8 @@ export function Receiver(
 		if (response instanceof Err) return response;
 
 		if (response.status === 410) {
-			// TODO: Delete Webmention if it exists
-			return new Response("Gone. Deleted Webmention");
+			storage.deleteWebmention({ source: source.href, target: target.href });
+			return new Response("Gone. Deleted Webmention as source returned status 410");
 		}
 
 		if (!response.ok) {
@@ -271,7 +273,8 @@ export function Receiver(
 			if (!check) return new Err(`${contentType} body does not contain target`, 400);
 		}
 
-		// TODO: Create Webmention
+		storage.createWebmention(parsed);
+
 		return new Response("OK", { status: 200 });
 	};
 }

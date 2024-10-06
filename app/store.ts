@@ -1,15 +1,26 @@
 import { Database } from "bun:sqlite";
+import type { BaseWebmention, GenericWebmention } from "./extensions.ts";
+import { isObject } from "./util.ts";
 
-export type Webmention = {
-	source: string;
-	target: string;
+type InnerObjectToString<T> = T extends object
+	? { [K in keyof T]: T[K] extends object | undefined | null ? Exclude<T[K], object> | string : T[K] }
+	: never;
+
+const innerObjectToString = <T>(obj: T): InnerObjectToString<T> => {
+	const modified: any = { ...obj };
+	for (const key in modified) {
+		if (isObject(modified[key])) {
+			modified[key] = JSON.stringify(modified[key]);
+		}
+	}
+	return modified;
 };
 
 export interface Storage {
 	db: Database;
-	getWebmentions: (mention: Partial<Webmention>) => Webmention[];
-	createWebmention: (webmention: Webmention) => void;
-	deleteWebmention: (webmention: Webmention) => void;
+	getWebmentions: (mention: Partial<BaseWebmention>) => GenericWebmention[];
+	createWebmention: (webmention: GenericWebmention) => void;
+	deleteWebmention: (webmention: BaseWebmention) => void;
 	close: () => void;
 }
 
@@ -33,7 +44,7 @@ export const Storage = (
 
 			source TEXT NOT NULL,
 			target TEXT NOT NULL,
-			type TEXT,
+			definition TEXT,
 			payload JSONB,
 
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -44,9 +55,9 @@ export const Storage = (
 	`);
 
 	const queries = {
-		createWebmention: db.query<void, Webmention>(`
-			INSERT INTO webmentions (source, target, created_at, updated_at)
-			VALUES (:source, :target, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		createWebmention: db.query<void, InnerObjectToString<GenericWebmention>>(`
+			INSERT INTO webmentions (source, target, definition, payload)
+			VALUES (:source, :target, :definition, :payload)
 			ON CONFLICT(source, target)
 			DO UPDATE SET updated_at = CURRENT_TIMESTAMP
 		`),
@@ -67,10 +78,11 @@ export const Storage = (
 			query += " " + parts.join(" AND ");
 			query += " ORDER BY created_at DESC";
 
-			return db.query<Webmention, Partial<Webmention>>(query).all(mention);
+			return db.query<BaseWebmention, Partial<BaseWebmention>>(query).all(mention);
 		},
-		createWebmention: (webmention: Webmention) => queries.createWebmention.run(webmention),
-		deleteWebmention: (webmention: Webmention) => queries.deleteWebmention.run(webmention),
+		createWebmention: (webmention: GenericWebmention) =>
+			queries.createWebmention.run(innerObjectToString(webmention)),
+		deleteWebmention: (webmention: BaseWebmention) => queries.deleteWebmention.run(webmention),
 		close: () => db.close(),
 	};
 };

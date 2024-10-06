@@ -1,3 +1,5 @@
+export const isObject = (val: unknown): val is Record<string, unknown> => typeof val === "object" && val !== null;
+
 export class Err extends Response {
 	constructor(text?: string, status: number = 500) {
 		super(text, { status });
