@@ -49,3 +49,20 @@ export function matchDomain(pattern: string, domain: string): boolean {
 	// Test the domain against the pattern
 	return regex.test(domain);
 }
+
+export type InnerObjectToString<T> = T extends object
+	? {
+			[K in keyof T]: T[K] extends object | Array<any> | undefined | null
+				? Exclude<T[K], object | Array<any>> | string
+				: T[K];
+	  }
+	: never;
+
+export const innerObjectToString = <T>(obj: T): InnerObjectToString<T> => {
+	const modified: any = { ...obj };
+
+	// Arrays are objects too
+	for (const key in modified) if (isObject(modified[key])) modified[key] = JSON.stringify(modified[key]);
+
+	return modified;
+};
