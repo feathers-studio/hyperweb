@@ -121,6 +121,13 @@ export function Receiver(
 		 * By default, the receiver will only accept Webmentions for "text/html", "application/json", and "text/plain" bodies.
 		 */
 		checkCustomContentTypeBody?: (request: Request, contentType: string | null) => Promise<boolean>;
+
+		/**
+		 * By default, the receiver will store Webmentions with unknown extensions as received.
+		 * If set, the receiver will ignore unknown extensions.
+		 * @default false
+		 */
+		banUnknownExtensions?: boolean;
 	},
 ) {
 	const userAgent = options?.userAgent ?? `HyperWeb WebmentionReceiver/${version}`;
@@ -128,6 +135,7 @@ export function Receiver(
 	const acceptedProtocols = options?.acceptedProtocols ?? ["http:", "https:"];
 	const acceptedContentTypes = options?.acceptedContentTypes ?? ["text/html", "application/json", "text/plain"];
 	const checkCustomContentTypeBody = options?.checkCustomContentTypeBody;
+	const banUnknownExtensions = options?.banUnknownExtensions ?? false;
 
 	return async function receiver(request: Request): Promise<Response> {
 		if (request.method !== "POST") return new Response("WebMention Request must be POST", { status: 405 });
@@ -158,7 +166,7 @@ export function Receiver(
 		let parsed;
 
 		if (mention.definition || mention.payload) {
-			parsed = parseExtension(mention as RawWebmentionWithPossiblePayload);
+			parsed = parseExtension(mention as RawWebmentionWithPossiblePayload, { banUnknownExtensions });
 			if (parsed instanceof Err) return parsed;
 		} else {
 			parsed = { source: source.href, target: target.href };
@@ -200,7 +208,7 @@ export function Receiver(
 		if (response instanceof Err) return response;
 
 		if (response.status === 410) {
-			storage.deleteWebmention({ source: source.href, target: target.href });
+			storage.webmentions.delete({ source: source.href, target: target.href });
 			return new Response("Gone. Deleted Webmention as source returned status 410");
 		}
 
@@ -273,7 +281,7 @@ export function Receiver(
 			if (!check) return new Err(`${contentType} body does not contain target`, 400);
 		}
 
-		storage.createWebmention(parsed);
+		storage.webmentions.create(parsed);
 
 		return new Response("OK", { status: 200 });
 	};

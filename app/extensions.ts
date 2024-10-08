@@ -11,6 +11,18 @@ export type RawWebmentionWithPossiblePayload = BaseWebmention & Record<string, s
 const nil = z.null().or(z.undefined());
 const empty = nil.or(z.object({}).strict());
 
+// TODO: mentions should have context, whether the mention happened in a post or reply, etc.
+
+export const mention = {
+	definition: "https://webmention.feathers.studio/mention/1.0/",
+	payload: empty,
+};
+
+export type MentionWebmention = BaseWebmention & {
+	definition: typeof mention.definition;
+	payload: z.infer<typeof mention.payload>;
+};
+
 export const like = {
 	definition: "https://webmention.feathers.studio/like/1.0/",
 	payload: empty,
@@ -32,6 +44,7 @@ export type CommentWebmention = BaseWebmention & {
 };
 
 export const extensions = {
+	[mention.definition]: mention,
 	[like.definition]: like,
 	[comment.definition]: comment,
 };
@@ -41,9 +54,12 @@ export type GenericWebmention = BaseWebmention & {
 	payload?: object | null | undefined;
 };
 
-export type Webmention = GenericWebmention | LikeWebmention | CommentWebmention;
+export type Webmention = GenericWebmention | LikeWebmention | CommentWebmention | MentionWebmention;
 
-export function parseExtension(mention: RawWebmentionWithPossiblePayload): Webmention | Err {
+export function parseExtension(
+	mention: RawWebmentionWithPossiblePayload,
+	{ banUnknownExtensions = false }: { banUnknownExtensions?: boolean },
+): Webmention | Err {
 	const definition = mention.definition;
 
 	let parsed;
@@ -65,6 +81,9 @@ export function parseExtension(mention: RawWebmentionWithPossiblePayload): Webme
 			payload: payload.data,
 		};
 	} else if (definition) {
+		if (banUnknownExtensions)
+			return new Err("Webmention extension " + definition + " is not supported by this receiver", 400);
+
 		return {
 			source: mention.source,
 			target: mention.target,
