@@ -1,11 +1,12 @@
 import { Database } from "bun:sqlite";
 import type { MessageEntity } from "telegraf/types";
 
-import type { BaseWebmention, GenericWebmention } from "./extensions.ts";
+import type { BaseWebmention, GenericWebmention } from "@hyperactive/mentions/extensions";
 import { innerObjectToString, type InnerObjectToString } from "./util.ts";
 
 export type Post = {
 	author: string;
+	title: string;
 	content: string;
 	entities: MessageEntity[];
 	slug: string;
@@ -23,6 +24,7 @@ namespace Storage {
 	}
 
 	export interface Posts {
+		get: (slug: string) => Post | null;
 		list: () => Post[];
 		create: (post: Omit<Post, "id" | "created_at" | "updated_at">) => void;
 		update: (post: Omit<Post, "id" | "created_at" | "updated_at">) => void;
@@ -99,6 +101,7 @@ export const Posts = (db: Database): Storage.Posts => {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 			author TEXT NOT NULL,
+			title TEXT NOT NULL,
 			content TEXT NOT NULL,
 			entities JSONB,
 			slug TEXT NOT NULL,
@@ -114,15 +117,18 @@ export const Posts = (db: Database): Storage.Posts => {
 	).run();
 
 	const queries = {
+		get: db.query<Post, { slug: string }>(`
+			SELECT id, author, title, content, json(entities), slug, created_at, updated_at FROM posts WHERE slug = :slug
+		`),
 		list: db.query<Post, {}>(`
-			SELECT id, author, content, json(entities), slug, created_at, updated_at FROM posts
+			SELECT id, author, title, content, json(entities), slug, created_at, updated_at FROM posts
 		`),
 		create: db.query<void, InnerObjectToString<Omit<Post, "id" | "created_at" | "updated_at">>>(`
-			INSERT INTO posts (author, content, entities, slug)
-			VALUES (:author, :content, :entities, :slug)
+			INSERT INTO posts (author, title, content, entities, slug)
+			VALUES (:author, :title, :content, :entities, :slug)
 		`),
 		update: db.query<void, InnerObjectToString<Omit<Post, "id" | "created_at" | "updated_at">>>(`
-			UPDATE posts SET author = :author, content = :content, entities = :entities, draft = :draft, updated_at = CURRENT_TIMESTAMP
+			UPDATE posts SET author = :author, title = :title, content = :content, entities = :entities, draft = :draft, updated_at = CURRENT_TIMESTAMP
 			WHERE slug = :slug
 		`),
 		publish: db.query<void, { slug: string }>(`
@@ -133,6 +139,7 @@ export const Posts = (db: Database): Storage.Posts => {
 		`),
 	};
 	return {
+		get: slug => queries.get.get({ slug }),
 		list: () => queries.list.all({}),
 		create: post => queries.create.run(innerObjectToString(post)),
 		update: post => queries.update.run(innerObjectToString(post)),

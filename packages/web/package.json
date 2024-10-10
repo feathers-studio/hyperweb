@@ -1,11 +1,38 @@
 {
-  "name": "@hyperactive/web",
-  "module": "index.ts",
-  "type": "module",
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
-  }
+	"name": "@hyperactive/web",
+	"version": "1.0.0-beta.1",
+	"main": "dist/app.js",
+	"exports": {
+		".": "./dist/app.js",
+		"./store": "./dist/store.js",
+		"./telegram": "./dist/telegram.js",
+		"./blog": "./dist/blog.js"
+	},
+	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/feathers-studio/hyperweb.git",
+		"directory": "packages/web"
+	},
+	"homepage": "https://github.com/feathers-studio/hyperweb/tree/master/packages/web#readme",
+	"bugs": {
+		"url": "https://github.com/feathers-studio/hyperweb/issues"
+	},
+	"scripts": {
+		"check": "tsc --noEmit",
+		"clean": "rm -rf dist/",
+		"post-build": "cp src/app.ts dist/app.ts",
+		"build": "npm run clean && tsc && npm run post-build",
+		"prepare": "npm run build"
+	},
+	"license": "MIT",
+	"devDependencies": {
+		"@types/bun": "^1.1.11",
+		"typescript": "^5.6.3"
+	},
+	"dependencies": {
+		"@hyperactive/hyper": "^2.0.0-alpha.14",
+		"@hyperactive/mentions": "workspace:*",
+		"telegraf": "^4.16.3"
+	}
 }

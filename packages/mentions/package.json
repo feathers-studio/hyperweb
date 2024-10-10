@@ -1,6 +1,6 @@
 {
 	"name": "@hyperactive/mentions",
-	"version": "1.0.0-beta.1",
+	"version": "1.0.0-beta.2",
 	"main": "dist/index.js",
 	"exports": {
 		".": "./dist/index.js",
@@ -8,7 +8,7 @@
 		"./sender": "./dist/sender.js",
 		"./version": "./dist/version.js"
 	},
-	"type": "module",
+	"type": "commonjs",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/feathers-studio/hyperweb.git",
