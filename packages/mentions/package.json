@@ -1,6 +1,13 @@
 {
 	"name": "@hyperactive/mentions",
+	"version": "1.0.0-beta.1",
 	"main": "dist/index.js",
+	"exports": {
+		".": "./dist/index.js",
+		"./receiver": "./dist/receiver.js",
+		"./sender": "./dist/sender.js",
+		"./version": "./dist/version.js"
+	},
 	"type": "module",
 	"repository": {
 		"type": "git",
@@ -12,7 +19,7 @@
 		"url": "https://github.com/feathers-studio/hyperweb/issues"
 	},
 	"scripts": {
-		"build": "tsc && cp src/version.js dist/version.js && cp src/version.d.ts dist/version.d.ts"
+		"build": "rm -rf dist/ && tsc && cp src/version.js dist/version.js && cp src/version.d.ts dist/version.d.ts"
 	},
 	"license": "MIT",
 	"devDependencies": {
