@@ -1,16 +1,7 @@
 {
 	"name": "hyperweb",
-	"version": "0.0.1",
-	"module": "app/index.ts",
-	"type": "module",
-	"devDependencies": {
-		"@types/bun": "latest"
-	},
-	"peerDependencies": {
-		"typescript": "^5.0.0"
-	},
-	"dependencies": {
-		"htmlparser2": "^9.1.0",
-		"zod": "^3.23.8"
-	}
+	"private": true,
+	"workspaces": [
+		"packages/*"
+	]
 }
