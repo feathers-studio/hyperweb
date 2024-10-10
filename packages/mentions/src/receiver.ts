@@ -74,7 +74,7 @@ async function validateJSON(response: Response, target: URL): Promise<boolean> {
 	return false;
 }
 
-interface Storage {
+export interface Storage {
 	insert: (webmention: Webmention) => Promise<void>;
 	delete: (webmention: Webmention) => Promise<void>;
 }

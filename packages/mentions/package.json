@@ -1,17 +1,18 @@
 {
 	"name": "@hyperactive/mentions",
-	"version": "1.0.0-beta.2",
+	"version": "1.0.0-beta.3",
 	"main": "dist/index.js",
 	"exports": {
 		".": "./dist/index.js",
 		"./receiver": "./dist/receiver.js",
 		"./sender": "./dist/sender.js",
+		"./extensions": "./dist/extensions.js",
 		"./version": "./dist/version.js"
 	},
 	"type": "commonjs",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/feathers-studio/hyperweb.git",
+		"url": "git+https://github.com/feathers-studio/hyperweb.git",
 		"directory": "packages/mentions"
 	},
 	"homepage": "https://github.com/feathers-studio/hyperweb/tree/master/packages/mentions#readme",
@@ -19,7 +20,11 @@
 		"url": "https://github.com/feathers-studio/hyperweb/issues"
 	},
 	"scripts": {
-		"build": "rm -rf dist/ && tsc && cp src/version.js dist/version.js && cp src/version.d.ts dist/version.d.ts"
+		"check": "tsc --noEmit",
+		"clean": "rm -rf dist/",
+		"post-build": "cp src/version.js dist/version.js && cp src/version.d.ts dist/version.d.ts",
+		"build": "npm run clean && tsc && npm run post-build",
+		"prepare": "npm run build"
 	},
 	"license": "MIT",
 	"devDependencies": {
