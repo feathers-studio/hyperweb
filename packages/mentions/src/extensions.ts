@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Err } from "../../../app/util";
+import { Err } from "./util.js";
 
 export type BaseWebmention = {
 	source: string;

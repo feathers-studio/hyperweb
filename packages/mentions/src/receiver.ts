@@ -4,7 +4,7 @@ import { URL } from "node:url";
 import { Readable } from "node:stream";
 
 import { WritableStream } from "htmlparser2/lib/WritableStream";
-import { Err, isObject, matchDomain, trya } from "../../../app/util";
+import { Err, isObject, matchDomain, trya } from "./util.js";
 import { parseExtension, Webmention, type RawWebmentionWithPossiblePayload } from "./extensions.js";
 
 type FormDataEntryValue = ReturnType<FormData["get"]>;
@@ -173,7 +173,7 @@ export function Receiver(
 			parsed = parseExtension(mention as RawWebmentionWithPossiblePayload, { banUnknownExtensions });
 			if (parsed instanceof Err) return parsed;
 		} else {
-			parsed = { source: source.href, target: target.href };
+			parsed = { source: source.href, target: target.href } as Webmention;
 		}
 
 		/**

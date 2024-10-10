@@ -1,12 +1,23 @@
 {
 	"name": "@hyperactive/mentions",
-	"module": "dist/index.js",
+	"main": "dist/index.js",
 	"type": "module",
-	"devDependencies": {
-		"@types/bun": "latest"
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/feathers-studio/hyperweb.git",
+		"directory": "packages/mentions"
 	},
-	"peerDependencies": {
-		"typescript": "^5.0.0"
+	"homepage": "https://github.com/feathers-studio/hyperweb/tree/master/packages/mentions#readme",
+	"bugs": {
+		"url": "https://github.com/feathers-studio/hyperweb/issues"
+	},
+	"scripts": {
+		"build": "tsc && cp src/version.js dist/version.js && cp src/version.d.ts dist/version.d.ts"
+	},
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^22.7.5",
+		"typescript": "^5.6.3"
 	},
 	"dependencies": {
 		"htmlparser2": "^9.1.0",
