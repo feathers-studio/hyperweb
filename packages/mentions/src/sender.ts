@@ -4,6 +4,7 @@ import { URL } from "node:url";
 import { Readable } from "node:stream";
 
 import { WritableStream } from "htmlparser2/lib/WritableStream";
+import { parse as parseLink } from "http-link-header";
 
 type CrossOriginPolicy = "same-origin" | "same-site" | "cross-origin";
 const CROSS_ORIGIN_POLICY: CrossOriginPolicy = "cross-origin";
@@ -27,8 +28,6 @@ namespace WebmentionEndpoint {
 
 type WebmentionEndpoint = WebmentionEndpoint.Discovered | WebmentionEndpoint.Error;
 
-const relRegex = /rel="([^"]+)"/;
-
 /**
  * @abstract "check for an HTTP Link header [RFC5988] with a rel value of webmention"
  * @abstract "the first HTTP Link header takes precedence"
@@ -37,16 +36,11 @@ const relRegex = /rel="([^"]+)"/;
 function tryParseWebmentionLinkHeader(response: Response): WebmentionEndpoint {
 	const header = response.headers.get("link");
 	if (!header) return new WebmentionEndpoint.Error("No Link header found", response.status);
-	const links = header.split(",");
 
-	for (const link of links) {
-		const [urlpart, relpart] = link.split(";");
-		if (urlpart[0] !== "<" || urlpart.slice(-1) !== ">") continue;
-		if (!relRegex.test(relpart)) continue;
-		const url = urlpart.slice(1, -1);
-		const rel = relpart.match(relRegex)?.[1];
-		if (rel !== "webmention") continue;
-		return new WebmentionEndpoint.Discovered(url);
+	const links = parseLink(header);
+	for (const ref of links.refs) {
+		if (ref.rel !== "webmention") continue;
+		return new WebmentionEndpoint.Discovered(ref.uri);
 	}
 
 	return new WebmentionEndpoint.Error("No webmention Link header found", response.status);
