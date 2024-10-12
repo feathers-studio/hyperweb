@@ -1,7 +1,10 @@
 {
 	"name": "@hyperactive/mentions",
-	"version": "1.0.0-beta.4",
+	"version": "1.0.0-beta.5",
 	"main": "dist/index.js",
+	"files": [
+		"dist"
+	],
 	"author": "Muthu Kumar <@MKRhere> (https://mkr.pw)",
 	"exports": {
 		".": "./dist/index.js",
